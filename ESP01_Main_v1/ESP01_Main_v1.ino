@@ -61,6 +61,7 @@ SoftwareSerial software_serial(RX, TX);
       String currentCode;
       const String ssid = "BHS";
       const String pass = "testpassword";
+      const String doneMessage = "DONE\n";
       module_type type;
       //String date_time;
       //String _time;
@@ -76,7 +77,8 @@ SoftwareSerial software_serial(RX, TX);
     serialToModule = &Serial;
     serialFromModule = &software_serial;
     serialToModule->begin(9600);
-    serialFromModule->begin(9600);
+    serialFromModule->begin(9600);s
+    serialToModule->print("ESP.BOOT\n");
     /* server.setRSACert(serverCertList, serverPrivKey);*/}
 
   // *********************** INIT *********************** //
@@ -109,7 +111,8 @@ SoftwareSerial software_serial(RX, TX);
               wifi_softap_set_dhcps_lease(&dhcp_lease);
           wifi_softap_dhcps_start();
           _isConnected = true;}
-        WiFi.softAP(ssid, pass, 1, true, 8);}
+        WiFi.softAP(ssid, pass, 1, true, 8);
+        firstBoot = false;}
 
   // *********************** RECEIVE *********************** //
 
@@ -174,7 +177,7 @@ SoftwareSerial software_serial(RX, TX);
           if(type)  setMessageToMaster("1."+arrayToString(_args));
           else      addMessageToServer("0."+arrayToString(_args));}
         else if(_args[0] == "INIT_ESP" &&_args[1] != "" && _args[2] != "")  initialiseEsp(_args[1], _args[2]);
-        else if(_args[0] == "CODE" && _args[1] != "")  {currentCode = _args[1]; serialToModule->print("DONE\n");}
+        else if(_args[0] == "CODE" && _args[1] != "")  {currentCode = _args[1]; serialToModule->print(doneMessage);}
         else if(_args[0] == "RMV" && _args[1] != "")    removeMessageFromServer(_args[1]);    
         else if(_args[0] == "CONNECT" && type)  wifi_toggle(true);
         else if(_args[0] == "DISCONNECT")       wifi_toggle(false);
@@ -193,7 +196,7 @@ SoftwareSerial software_serial(RX, TX);
 
     void espManager::wifi_toggle(bool conn){ // IMPLEMENT QUEUE FOR BUSY ???
       if(isBusy) {serialToModule->print("BUSY\n"); return;}
-      if(conn && !_isConnected)       WiFi.begin("BHS", "testpassword"); 
+      if(conn && !_isConnected)       WiFi.begin(ssid, pass); 
       else if(!conn && _isConnected)  WiFi.disconnect(); 
       serialToModule->print("DONE\n");
       isBusy = true;}
@@ -202,18 +205,13 @@ SoftwareSerial software_serial(RX, TX);
       if(!isInitialised || type==MAIN_MOD) return;
       int _status = WiFi.status();
       if(!_isConnected && _status == WL_CONNECTED) {
-        if(firstBoot){
-          startSoftAP();
-          serialToModule->print("CONNECT.OK\n");
-          firstBoot = false;}
-        else serialToModule->print("ESP.CONNECTED\n");
+        if(firstBoot) startSoftAP();
+        serialToModule->print("ESP.1\n");
         isBusy = false;
         _isConnected = true;}
       else if(_isConnected && (_status==WL_CONNECT_FAILED || _status==WL_CONNECTION_LOST || _status==WL_DISCONNECTED)){
-        if(isBusy){
-          serialToModule->print("DISCONNECT.OK\n");
-          isBusy = false;}
-        else serialToModule->print("ESP.DISCONNECTED\n");
+        if(isBusy) isBusy = false;
+        serialToModule->print("ESP.0\n");
         _isConnected = false;}
       /*else if(!isBusy && WiFi.status() == WL_IDLE_STATUS) isBusy = true;*/}
 
@@ -231,12 +229,12 @@ SoftwareSerial software_serial(RX, TX);
       for(uint8_t i = 0; i<MAX_MSG; i++)
         if(serverMessages[i] == ""){
           serverMessages[i] = message; 
-          serialToModule->print("DONE\n"); return;}
+          serialToModule->print(doneMessage); return;}
       serialToModule->print("OOM_MSG\n");}
     
     void espManager::setMessageToMaster(const String& message){
       messageToMaster = message; 
-      serialToModule->print("DONE\n");}
+      serialToModule->print(doneMessage);}
     
     void espManager::removeMessageFromServer(const String& ID){
       for(uint8_t i = 0; i<MAX_MSG; i++)

@@ -13,7 +13,13 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 
-IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YOU PASS PN THE MESSAGE
+//IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YOU PASS PN THE MESSAGE
+// AUTO CONNECT FEATURE ???
+// LOOK INTO INIT_0 !!!!!!! What HAPPENS???
+// Have to discuss when to activate init:
+// When you are a MAIN you check if you have ROOMs and LEAFs.
+// In theory, if you don't, then you wait for connections.
+// If you do, you send messages to 
 
 /* ************************************************************* */
 /*                           HEADERS                             */
@@ -31,11 +37,11 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       _BLUETOOTH
     };
     
-    enum comm_state : uint8_t {
-      _CONNECTING,
-      _CONNECTED,
-      _NONE
-    };
+//    enum comm_state : uint8_t {
+//      _CONNECTING,
+//      _CONNECTED,
+//      _NONE
+//    };
     
     enum module_type : uint8_t {
       MAIN_MOD,
@@ -125,22 +131,19 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
     
   // ********************* MODULES ********************** //
     
-    class Module {
-      public:
+    struct Module {
         Module(Unit* _Unit, Module** _modules = nullptr, Feature** _features = nullptr);
-        //Module();
         String address;
         String ID;
         String code;
         String room_name = "";
+        bool status  = false;
+        bool enabled = false;
         Unit* unit = nullptr;
         Module* master = nullptr;
         Module** modules = nullptr;
         Feature** features = nullptr;
-        module_type type;
-      protected:
-        bool enabled = false;
-    };
+        module_type type;};
 
   // ********************* MANAGERS ********************** //
     
@@ -152,12 +155,11 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
     
     class CommManager {
       public:
-        CommManager(comm_type _type, Unit* _currentUnit);
+        CommManager(comm_type _type, Unit*& _currentUnit);
         Module** initDeviceMappingOfType(module_type _type, Unit** _units, String current_id = "");
-        // bool execCommProcesses();
-        String* receiveSerial(bool sticky = false, uint8_t numberOfArg = 1, uint8_t numberOfChar = 1);
-        String getDeviceAddress(module_type _type, String ID);
-        String* sendMessageTo(Unit*, String, uint8_t numberOfArg = 1);
+        String*& receiveSerial(bool sticky = false, uint8_t numberOfArg = 1, uint8_t numberOfChar = 1);
+        String& getDeviceAddress(module_type _type, String& ID);
+        String* sendMessageTo(Unit*, const String&, uint8_t numberOfArg = 1);
         void connectToNetwork();
         void checkPendingMessages();
         bool isConnectedToNetwork = false;
@@ -186,10 +188,10 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
     class MemoryManager {
       public:
         MemoryManager();
-        uint8_t generateUnit(module_type _type, String device_ID);
-        bool deleteUnit(module_type _type, String device_ID);
-        Unit* getUnitByCode(String _code, Unit* _units);
-        Unit* getUnitByID(String _ID, Unit* _units);
+        Unit*& generateUnit(String& _ID, String _address = "");
+        bool deleteUnit(module_type _type, String& device_ID);
+        Unit* getUnitByCode(String& _code, Unit*& _units);
+        Unit* getUnitByID(String& _ID, Unit*& _units);
         bool checkMemory();
         Unit* coreUnit    = nullptr;  // GETTERS
         Unit* master_unit = nullptr;  // ???
@@ -207,21 +209,20 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
     
     class ModuleManager : public Module {
       public:
-        // ModuleManager(module_type _type, Unit* _Unit = nullptr, String _address = {}, Module** _modules = nullptr, Feature** _features = nullptr);
         ModuleManager(Feature** _features = nullptr);
         void checkSystem();
         void initSystem();
         void checkExistingConnections();
         void updateModules(Module** _modules);
         void updateFeatures(Feature** features);
-        static Feature** parseFeatures(String _features);
-        Module* getModuleByCode(String _code);
-        Module* getModuleByID(String _ID);
-        Sensor* getSensor(String _feature);
-        Actuator* getActuator(String _feature);
-        Feature* getFeature(String _feature);
-        String getFeaturesJSON();
-        bool sendMessageTo(Module* _module, String message);
+        static Feature** parseFeatures(const String& _features);
+        Module* getModuleByCode(const String& _code);
+        Module* getModuleByID(const String& _ID);
+        Sensor* getSensor(const String& _feature);
+        Actuator* getActuator(const String& _feature);
+        Feature* getFeature(const String& _feature);
+        String& getFeaturesJSON();
+        bool sendMessageTo(const Module* _module, const String& message);
         void receiveComm();
     //    void initConn(); // For Room/Leaf
     //    void requestAllow(); // For Room
@@ -229,12 +230,10 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
     //    void allowLeaf(); // For Main/Room
     //  private:
     //    bool verifyType(Module*, module_type);
-    //    bool acceptRoom; // For Main
-    //    bool acceptLeaf; // For Main/Room
         CommManager* bt;   // For Main/Room/Leaf
         CommManager* wifi; // For Main/Room
         MemoryManager* memory;
-        void execCommand(String* _args);
+        void execCommand(String*& _args);
     };
   
   
@@ -271,7 +270,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
   
   // ********************* COMM MANAGER ********************** //
 
-    CommManager::CommManager(comm_type _type, Unit* _currentUnit){
+    CommManager::CommManager(comm_type _type, Unit*& _currentUnit){
       type = _type;
       currentUnit = _currentUnit;
       String* _args = NULL;
@@ -285,7 +284,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
           Serial.println("  WiFi:        ERROR"); return;}
         isInitialised = true;
         if(currentUnit->ID[0]!='0'){
-          serial->print("CONNECT.\"BHS\".\"testpassword\"\n"); delay(200);
+          serial->print("CONNECT\n"); delay(200);
           _args = receiveSerial(true,2);
           if(_args[1] != "OK"){
             delete _args; _args = NULL;
@@ -322,9 +321,9 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
             Serial.println("    Confirmation Failed"); continue;}
           _units[i]->address = address;}
         if(currentUnit->code == "000"){ // WHEN INIT_CONFIRM 000 => CHECK IF BOTH ID+CODE IS CURRENTUNIT? MAIN : ELSE
-          if(_type) _args = sendMessageTo(_units[i], "INIT_CONFIRM."+_units[i]->ID, type==_WIFI?0:2);
-          else      _args = sendMessageTo(currentUnit, "INIT_CONFIRM."+currentUnit->ID, type==_WIFI?0:2);}
-        else  _args = sendMessageTo(currentUnit, "INIT_CONFIRM."+_units[i]->ID, type==_WIFI?0:2);
+          if(_type) _args = sendMessageTo(_units[i], "INIT_REQ."+_units[i]->ID, type==_WIFI?0:2);
+          else      _args = sendMessageTo(currentUnit, "INIT_REQ."+currentUnit->ID, type==_WIFI?0:2);}
+        else  _args = sendMessageTo(currentUnit, "INIT_REQ."+_units[i]->ID, type==_WIFI?0:2);
         if(_args[1]=="INIT_OK"){
           Serial.println("  "+String(_type==0?"Master":_type==1?"Room":"Leaf")+" Device Confirmed");
           Module* module = new Module(&_units[0][i]);
@@ -340,7 +339,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       else  Serial.println("  "+String(_type==0?"Master":_type==1?"Room":"Leaf")+" Device Mapping Success");
       return modules;}
 
-    String CommManager::getDeviceAddress(module_type _type, String ID){
+    String& CommManager::getDeviceAddress(module_type _type, String& ID){
       String address = "";
       String* _args = NULL;
       uint8_t counter = 0;
@@ -366,7 +365,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       if(address=="") Serial.println("  Failed to retrieve address");
       return address;}
 
-    String* CommManager::sendMessageTo(Unit* _unit, String message, uint8_t numberOfArg){
+    String* CommManager::sendMessageTo(Unit* _unit, const String& message, uint8_t numberOfArg){
       if(!isInitialised) return nullptr;
       if(isBusy)
         for(uint8_t i=0; i<MAX_MSG; i++){
@@ -411,7 +410,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
         delete receiveSerial(true);}
       return ret;}
     
-    String* CommManager::receiveSerial(bool sticky, uint8_t numberOfArg, uint8_t numberOfChar){
+    String*& CommManager::receiveSerial(bool sticky, uint8_t numberOfArg, uint8_t numberOfChar){
       uint8_t argIndex       = 0;
       String* serial_args    = new String[10];
       String currentArg      = "";
@@ -443,9 +442,9 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       
     void CommManager::closeComm(){
       String* _args = NULL;
-      do{delete _args; _args = NULL;
-        serial->print("---\r"); delay(100);
-        _args = receiveSerial(true);}
+      do{ if(_args != nullptr){delete _args; _args = NULL;}
+          serial->print("---\r"); delay(100);
+          _args = receiveSerial(true);}
       while(_args[0] != "END");
       delete _args; _args = NULL;}
     
@@ -481,9 +480,11 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       Serial.println("  Module type: "+String(type==0? "MAIN_MOD": type==1? "ROOM_MOD": "LEAF_MOD"));
       if (type == MAIN_MOD && EEPROM[0] != 255){
         numberOfRooms = EEPROM[0];
+        numberOfRooms = EEPROM[0];
         unit_arr[0] = rooms;
         Serial.println("    Number of Rooms: "+String(numberOfRooms));}
       if ((type == MAIN_MOD || type == ROOM_MOD) && EEPROM[1] != 255){
+        numberOfLeafs = EEPROM[1];
         numberOfLeafs = EEPROM[1];
         unit_arr[1] = leafs;
         Serial.println("    Number of Leafs: "+String(numberOfLeafs));}
@@ -500,35 +501,30 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
             unit_arr[j][((i-100*(j+1)+3)/3)-1] = new Unit{str1+str2, str3, ""};}
       Serial.print("  DONE\n");}
     
-    uint8_t MemoryManager::generateUnit(module_type _type, String device_ID){
-      uint8_t code;
+    Unit*& MemoryManager::generateUnit(String& _ID, String _address){
+      Unit* unit = new Unit{_ID, random(255), _address};
+      uint8_t code = random(255);
       byte* numberOfType;
       byte* lastOfType;
-      if(_type == ROOM_MOD){
-           numberOfType = &numberOfRooms;
-           lastOfType = &lastRoom;}
-      else{numberOfType = &numberOfLeafs;
-           lastOfType = &lastLeaf;}
-      while(numberOfType != 255){
-        code = random(255);
-        for(uint8_t i=0; i>numberOfType; i++) if(EEPROM[(_type == ROOM_MOD? 100 : 200)+i+2] == code) continue;
-        break;}
-      if(*lastOfType == *numberOfType){
-        EEPROM[(_type == ROOM_MOD? 100+numberOfRooms : 200+numberOfLeafs)]= device_ID.substring(0,2).toInt();
-        EEPROM[(_type == ROOM_MOD? 100+numberOfRooms+1 : 200+numberOfLeafs+1)]= device_ID.substring(3,6).toInt();
-        EEPROM[(_type == ROOM_MOD? 100+numberOfRooms+2 : 200+numberOfLeafs+2)]= code;
-        *numberOfType++;
-        *lastOfType++;}
-      else{
-        for(uint8_t i=0; i>numberOfType; i++)
-          if(EEPROM[(_type == ROOM_MOD? 100 : 200)+i] == 255){
-            EEPROM[(_type == ROOM_MOD? 100+i : 200+i)]= device_ID.substring(0,2).toInt();
-            EEPROM[(_type == ROOM_MOD? 100+i+1 : 200+i+1)]= device_ID.substring(3,6).toInt();
-            EEPROM[(_type == ROOM_MOD? 100+i+2 : 200+i+2)]= code;}
-        *numberOfType++;}
-      return code;}
+      if(_ID[0]=='1'){
+        numberOfType = &numberOfRooms;
+        lastOfType = &lastRoom;}
+      else if(_ID[0]=='2'){
+        numberOfType = &numberOfLeafs;
+        lastOfType = &lastLeaf;}
+      for(uint8_t i=0; i>numberOfType; i++)
+        if(EEPROM[(_ID[0]=='1'? 100 : 200)+i+2] == code){
+          unit->code = random(255); i=0;}
+      for(uint8_t i=(*lastOfType == *numberOfType? numberOfType : 0); i>numberOfType; i++)
+        if(EEPROM[(_ID[0]=='1'? 100 : 200)+i] == 255){
+          EEPROM[(_ID[0]=='1'? 100+i : 200+i)]= _ID.substring(0,2).toInt();
+          EEPROM[(_ID[0]=='1'? 100+i+1 : 200+i+1)]= _ID.substring(3,5).toInt();
+          EEPROM[(_ID[0]=='1'? 100+i+2 : 200+i+2)]= unit->code.toInt();
+          if(*lastOfType == *numberOfType) *lastOfType++;
+          *numberOfType++;}
+      return unit;}
     
-    bool MemoryManager::deleteUnit(module_type _type, String device_ID){
+    bool MemoryManager::deleteUnit(module_type _type, String& device_ID){
       byte* numberOfType;
       byte* lastOfType;
       if(_type == ROOM_MOD){    
@@ -551,13 +547,13 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       /* COMPARISON BETWEEN SYS VALUES AND EEPROM VALUES */
     }
 
-    Unit* MemoryManager::getUnitByCode(String _code, Unit* _units){
+    Unit* MemoryManager::getUnitByCode(String& _code, Unit*& _units){
       for(uint8_t i =0; i<MAX_MODULES; i++)
         if(_units[i].code != _code)
         return &_units[i];
       return nullptr;}
 
-    Unit* MemoryManager::getUnitByID(String _ID, Unit* _units){
+    Unit* MemoryManager::getUnitByID(String& _ID, Unit*& _units){
       for(uint8_t i =0; i<MAX_MODULES; i++)
         if(_units[i].ID != _ID)
         return &_units[i];
@@ -605,22 +601,26 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
 
     // *** COMMANDS *** //
 
-    void ModuleManager::execCommand(String* _args){
+    void ModuleManager::execCommand(String*& _args){
       Module* module = getModuleByCode(_args[0]);
       if(type==MAIN_MOD){
         /* **************** IRR COMMANDS ***************** */
-        // if(_args[1] == "INPUT"){}
-        if(_args[0] == "CONNECT"){
-          if(_args[1] == "OK") wifi->isConnectedToNetwork = true;
-          wifi->isBusy = false;}
-        if(_args[1] == "INIT_CONFIRM" && module != nullptr)
-          //if(_args[0]=="000" && _args[2][0]!='0')
-          //  memory->generateUnit():
+        if(_args[1] == "INIT_CONF" && _args[2][0]!='0')
+          if(_args[0]=="000"){
+            Unit* unit = memory->generateUnit(_args[2], _args[3]);
+            updateModules()
+            sendMessageTo(module, "INIT_OK."+_args[2]);}
+          else if(_args[0]!="000" && _args[2][0]!='0')
+            if(getModuleByID(_args[2])!= nullptr)
           sendMessageTo(module, "INIT_OK");
         if(_args[1] == "INIT_OK" && module != nullptr)
           updateFeatures(parseFeatures(_args[2])); // DO THAT §§§§§§§§§§§
         }
       else if(type==ROOM_MOD){
+        if(_args[0] == "ESP"){
+            wifi->isConnectedToNetwork = _args[1][0]-'0'; 
+            wifi->isBusy = false;}
+        
         if(_args[1] == "INIT_CONFIRM" && _args[0] == master->ID)
           sendMessageTo(master, "INIT_OK."+getFeaturesJSON());
         if(_args[1]>='0'&&_args[1]<='9') sendMessageTo(getModuleByCode(_args[1]), _args[2]);}
@@ -641,7 +641,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
         if(type==LEAF_MOD)  execCommand(bt->receiveSerial());}
       if(wifi != nullptr)   execCommand(wifi->receiveSerial());}
     
-    bool ModuleManager::sendMessageTo(Module* _module, String message){
+    bool ModuleManager::sendMessageTo(const Module* _module, const String& message){
       if(_module==nullptr) return;
       if(type==MAIN_MOD || type==ROOM_MOD){
         if(_module->type==MAIN_MOD || _module->type==ROOM_MOD)
@@ -653,19 +653,19 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
 
     // *** FEATURES *** //
 
-    Actuator* ModuleManager::getActuator(String _feature){
+    Actuator* ModuleManager::getActuator(const String& _feature){
       for(uint8_t i = 0; i<10; i++)
         if(features[i] != nullptr && features[i]->_name == _feature) 
           return features[i];
       return nullptr;}
 
-    Sensor* ModuleManager::getSensor(String _feature){
+    Sensor* ModuleManager::getSensor(const String& _feature){
       for(uint8_t i = 0; i<10; i++)
         if(features[i] != nullptr && features[i]->_name == _feature) 
           return features[i];
       return nullptr;}
 
-    Feature* ModuleManager::getFeature(String _feature){
+    Feature* ModuleManager::getFeature(const String& _feature){
       for(uint8_t i = 0; i<10; i++){
         if(features[i] == nullptr) continue;
         if(features[i]->_name == _feature){
@@ -675,7 +675,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
           Sensor* curr = features[i];
           return curr;}}}
 
-    Feature** ModuleManager::parseFeatures(String _features){
+    Feature** ModuleManager::parseFeatures(const String& _features){
       // Use the ARDUINO JSON
     }
 
@@ -683,7 +683,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
       // Same as Modules Probably
     }
 
-    String ModuleManager::getFeaturesJSON(){
+    String& ModuleManager::getFeaturesJSON(){
       String rep = "{\"features\":[{";
       for(uint8_t i = 0; i<MAX_FEATURE; i++){
         if(features[i] == nullptr) continue;
@@ -727,13 +727,13 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
 
     // *** MODULES *** //
 
-    Module* ModuleManager::getModuleByCode(String _code){
+    Module* ModuleManager::getModuleByCode(const String& _code){
       for(uint8_t i =0; i<MAX_MODULES; i++)
         if(modules[i] != nullptr && modules[i]->code != _code)
         return modules[i];
       return nullptr;}
 
-    Module* ModuleManager::getModuleByID(String _ID){
+    Module* ModuleManager::getModuleByID(const String& _ID){
       for(uint8_t i =0; i<MAX_MODULES; i++)
         if(modules[i] != nullptr && modules[i]->ID != _ID)
         return modules[i];
@@ -744,7 +744,7 @@ IF IT'S 0 IT MEANS IT'S GOING DOWN SO MASTER IS SPEAKING TO YOU, 1 ONLY MEANS YO
         for(uint8_t i=0; i<MAX_MODULES; i++)
           for(uint8_t j=0; j<MAX_MODULES; j++)
             if(modules[j]==nullptr && _modules[i]!=nullptr){
-              if(_modules[i]->type == MAIN_MOD) master = _modules[i];
+              if(_modules[i]->type == MAIN_MOD) master = _modules[i]; // GOTTA NULL STUFF HERE
               modules[j] = _modules[i]; break;}}
 
 
@@ -883,6 +883,7 @@ void setup(){
 void loop(){
   manager->checkSystem();
   manager->receiveComm();
+  
 //    String str = "";
 //    // TEST TALK TO BT
 //    while(Serial.available()){
