@@ -2,7 +2,7 @@
 #include <SoftwareSerial.h>
 #define RX  3
 #define TX  2
-#define MAX_MSG 10
+#define MAX_MSG 10 
 
 SoftwareSerial software_serial(RX, TX);
 
